@@ -7,6 +7,7 @@
 
 namespace WordPress\SMTP\Admin;
 
+use WordPress\SMTP\Credentials;
 use WordPress\SMTP\Delivery_Tracker;
 use WordPress\SMTP\Error_Hints;
 use WordPress\SMTP\Log_Repository;
@@ -343,8 +344,12 @@ class Admin_Page {
 					<?php disabled( $locked ); ?>
 				/>
 				<?php
-				if ( '' !== $value && ! $locked ) {
-					$field['description'] = __( 'A password is saved. Leave empty to keep it.', 'smtp' );
+				if ( ! $locked ) {
+					$storage = Credentials::STORAGE_SECRETS === $this->settings->get_secret_storage()
+						? __( 'Stored encrypted with the WordPress Secrets API.', 'smtp' )
+						: __( 'Stored in the database, not encrypted.', 'smtp' );
+
+					$field['description'] = trim( ( '' !== $value ? __( 'A password is saved. Leave empty to keep it.', 'smtp' ) : $field['description'] ) . ' ' . $storage );
 				}
 				break;
 

@@ -8,6 +8,7 @@
 use WordPress\SMTP\Credentials;
 use WordPress\SMTP\Provider_Registry;
 use WordPress\SMTP\Settings;
+use WordPress\SMTP\Test_Utils\Fake_Secrets_API;
 
 class Settings_Tests extends WP_UnitTestCase {
 
@@ -555,5 +556,39 @@ class Settings_Tests extends WP_UnitTestCase {
 		$this->save( array( 'provider' => 'locked' ) );
 
 		$this->assertSame( 'constant', $this->settings->get_source( 'token' ) );
+	}
+
+	public function test_sanitize_reports_a_password_the_secrets_api_could_not_store() {
+		require_once ABSPATH . 'wp-admin/includes/template.php';
+
+		$api            = new Fake_Secrets_API();
+		$credentials    = new Credentials( $api );
+		$this->settings = new Settings( new Provider_Registry(), $credentials );
+		$credentials->set( 'password', 'current' );
+		$api->fail_writes = true;
+
+		$this->settings->sanitize(
+			array(
+				'provider' => 'smtp',
+				'password' => 'new',
+			)
+		);
+
+		$this->assertSame( array( 'password' ), $this->settings->get_unsaved_secrets() );
+		$this->assertSame( 'current', $credentials->get( 'password' ) );
+		$this->assertSame( 'smtp_secret_not_saved_password', get_settings_errors( Settings::OPTION )[0]['code'] );
+
+		$GLOBALS['wp_settings_errors'] = array();
+	}
+
+	public function test_get_secret_storage() {
+		$api            = new Fake_Secrets_API();
+		$this->settings = new Settings( new Provider_Registry(), new Credentials( $api ) );
+
+		$this->assertSame( Credentials::STORAGE_SECRETS, $this->settings->get_secret_storage() );
+
+		$api->available = false;
+
+		$this->assertSame( Credentials::STORAGE_OPTION, $this->settings->get_secret_storage() );
 	}
 }

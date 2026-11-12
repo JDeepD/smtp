@@ -134,6 +134,10 @@ class Settings_Command {
 
 		$this->settings->update( $values );
 
+		if ( array() !== $this->settings->get_unsaved_secrets() ) {
+			\WP_CLI::error( __( 'The password could not be saved with the WordPress Secrets API, so the current one was kept. The other settings were saved.', 'smtp' ) );
+		}
+
 		if ( ! $this->settings->is_configured() ) {
 			\WP_CLI::warning( __( 'The provider is still missing required settings, so emails are not sent through it yet.', 'smtp' ) );
 		}

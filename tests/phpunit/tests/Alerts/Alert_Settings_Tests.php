@@ -9,6 +9,7 @@ use WordPress\SMTP\Alerts\Alert_Channel_Registry;
 use WordPress\SMTP\Alerts\Alert_Settings;
 use WordPress\SMTP\Credentials;
 use WordPress\SMTP\Test_Utils\Alerts\Fake_Channel;
+use WordPress\SMTP\Test_Utils\Fake_Secrets_API;
 
 class Alert_Settings_Tests extends WP_UnitTestCase {
 
@@ -163,5 +164,22 @@ class Alert_Settings_Tests extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( '#alerts', $clean['channels']['fake']['room'] );
+	}
+
+	public function test_sanitize_reports_a_secret_the_secrets_api_could_not_store() {
+		require_once ABSPATH . 'wp-admin/includes/template.php';
+
+		$api            = new Fake_Secrets_API();
+		$credentials    = new Credentials( $api );
+		$this->settings = new Alert_Settings( new Alert_Channel_Registry(), $credentials );
+		$credentials->set( 'alert_fake_token', 'saved-token' );
+		$api->fail_writes = true;
+
+		$this->settings->sanitize( array( 'channels' => array( 'fake' => array( 'token' => 'new-token' ) ) ) );
+
+		$this->assertSame( 'saved-token', $credentials->get( 'alert_fake_token' ) );
+		$this->assertSame( 'smtp_secret_not_saved_fake_token', get_settings_errors( Alert_Settings::OPTION )[0]['code'] );
+
+		$GLOBALS['wp_settings_errors'] = array();
 	}
 }

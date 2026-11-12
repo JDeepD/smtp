@@ -11,6 +11,7 @@ use WordPress\SMTP\Credentials;
 use WordPress\SMTP\Delivery_Tracker;
 use WordPress\SMTP\Provider_Registry;
 use WordPress\SMTP\Settings;
+use WordPress\SMTP\Test_Utils\Fake_Secrets_API;
 use WordPress\SMTP\Test_Utils\Traits\With_Log_Table;
 
 require_once TESTS_PLUGIN_DIR . '/tests/phpunit/utils/wp-cli-stub.php';
@@ -185,5 +186,19 @@ class Command_Tests extends WP_UnitTestCase {
 		$this->command->test( array( 'someone@example.com' ), array( 'connection-log' => true ) );
 
 		$this->assertSame( array( 'CLIENT -> SERVER: [redacted]' ), WP_CLI::$logs );
+	}
+
+	public function test_status_reports_where_secrets_are_stored() {
+		$api            = new Fake_Secrets_API();
+		$api->available = false;
+		$settings       = new Settings( new Provider_Registry(), new Credentials( $api ) );
+		$this->command  = new Command( $settings, new Test_Email( $settings, new Delivery_Tracker( $settings ) ) );
+
+		$this->assertSame( 'option', $this->get_status_rows()['secret_storage']['value'] );
+
+		WP_CLI::reset();
+		$api->available = true;
+
+		$this->assertSame( 'secrets', $this->get_status_rows()['secret_storage']['value'] );
 	}
 }

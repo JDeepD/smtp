@@ -169,8 +169,16 @@ class Alert_Settings {
 				$value = isset( $values[ $key ] ) && is_string( $values[ $key ] ) ? $values[ $key ] : '';
 
 				if ( 'password' === ( $field['type'] ?? '' ) ) {
-					if ( '' !== $value ) {
-						$this->credentials->set( self::get_secret_key( $id, $key ), $value );
+					if ( '' !== $value && ! $this->credentials->set( self::get_secret_key( $id, $key ), $value ) && function_exists( 'add_settings_error' ) ) {
+						add_settings_error(
+							self::OPTION,
+							'smtp_secret_not_saved_' . $id . '_' . $key,
+							sprintf(
+								/* translators: %s: Field label, for example "Webhook URL" */
+								__( '%s could not be saved with the WordPress Secrets API. The current value was kept.', 'smtp' ),
+								$field['label'] ?? $key
+							)
+						);
 					}
 					continue;
 				}

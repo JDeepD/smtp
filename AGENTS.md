@@ -15,7 +15,7 @@ This file provides context for AI coding agents (Claude Code, OpenAI Codex, Gemi
 
 Existing users of the legacy SMTP plugin keep their settings through an automatic import (see "Legacy plugin migration").
 
-Out of scope for the first release: HTTP-API providers (tracked in [#1](https://github.com/WordPress/smtp/issues/1)), multisite network settings, encryption of stored credentials.
+Out of scope for the first release: HTTP-API providers (tracked in [#1](https://github.com/WordPress/smtp/issues/1)) and multisite network settings.
 
 ## Repository Structure
 
@@ -29,7 +29,8 @@ smtp/
 │   ├── Plugin_Main.php       # Wires every component, activation/deactivation, purge schedule
 │   ├── Provider_Registry.php # smtp_providers filter, provider validation, Generic SMTP provider
 │   ├── Settings.php          # Field resolution (constant > saved value > default) and sanitization
-│   ├── Credentials.php       # The only place that reads/writes secrets
+│   ├── Credentials.php       # The only place that reads/writes secrets (Secrets API, or the option as fallback)
+│   ├── Secrets_API.php       # Thin wrapper around the WordPress Secrets API, used only by Credentials
 │   ├── Migration.php         # One-time import of the legacy SMTP plugin (smtp_options) settings
 │   ├── Mailer.php            # phpmailer_init and wp_mail_from(_name) integration
 │   ├── Delivery_Tracker.php  # Detects when another plugin delivers the email instead of this one
@@ -52,6 +53,7 @@ smtp/
 │       ├── Alerts_Tab.php    # Alerts tab (channel select, fields shown per channel), admin-post handler for the test alert
 │       ├── Log_List_Table.php
 │       ├── Failure_Notice.php # Admin notice about recently failed emails, dismissible per user
+│       ├── Credentials_Notice.php # Admin notice when secrets stored with the Secrets API can not be read
 │       └── Test_Email.php    # admin-post handler for the test email
 ├── tests/
 │   └── phpunit/
@@ -82,8 +84,12 @@ A provider is an array registered through the `smtp_providers` filter:
 ### Settings and credentials
 
 - A field value resolves in this order: constant, secret (for `password` fields) or saved option, field default. See `Settings::resolve()`.
-- Options: `smtp_settings` (everything except secrets) and `smtp_credentials` (secrets, not autoloaded).
-- **Never read or write secrets outside `Credentials`.** WordPress 7.2 is expected to add a credentials encryption API, and `Credentials` is the single place that will change.
+- Options: `smtp_settings` (everything except secrets), `smtp_credentials` (secrets when the Secrets API is not used, not autoloaded) and `smtp_secret_keys` (the keys stored with the Secrets API).
+- **Never read or write secrets outside `Credentials`.** It stores them with the WordPress Secrets API (7.2) as `smtp/<key>` when `Secrets_API::can_store()` is true, and in `smtp_credentials` otherwise. Each key is read from the storage that `smtp_secret_keys` says, never from both.
+- Detect the Secrets API with `wp_is_secrets_api_available()` (through `Secrets_API`), not with a version check or `function_exists( 'wp_get_secret' )`: the API is unusable without a valid `WP_SECRETS_KEY`.
+- `Credentials::maybe_migrate()` moves the option to the Secrets API on `admin_init` and on activation, and reads each value back before removing it.
+- A secret that can not be read returns an empty string, so the plugin behaves as if it was never entered. **Never fall back to a plain-text copy.** `Credentials_Notice` tells administrators.
+- `Credentials::set()` returns `false` when the Secrets API fails, and keeps the current value. Callers report it (`add_settings_error()`, or a WP-CLI error).
 - **Never print a saved secret into HTML.** Password fields render empty with a placeholder, and an empty submission keeps the current secret.
 - The plugin must do nothing until the active provider has its `required` and `required_if` fields (`Settings::is_configured()`), so activating it never breaks a site's email.
 
@@ -173,7 +179,7 @@ npm run test-php -- --filter Settings_Tests::test_sanitize_is_idempotent
 ## Tests
 
 - `tests/phpunit/tests/` — all PHPUnit test classes, one per class in `includes/` and named `<Class>_Tests` (for example `Settings_Tests`, `Admin/Admin_Page_Tests`). Files end in `_Tests.php`, which is what `phpunit.xml.dist` picks up.
-- `tests/phpunit/utils/` — shared helpers, as traits (`With_Log_Table`, `With_PHPMailer`), and `Alerts\Fake_Channel`, an alert channel that records what it receives.
+- `tests/phpunit/utils/` — shared helpers, as traits (`With_Log_Table`, `With_PHPMailer`), `Alerts\Fake_Channel`, an alert channel that records what it receives, and `Fake_Secrets_API`, an in-memory Secrets API to pass to `Credentials`.
 - `tests/phpunit/utils/` — shared helpers, as traits (`With_Log_Table`, `With_PHPMailer`), and `wp-cli-stub.php`, a stand-in for WP-CLI, which is not loaded in the test stack.
 - `tests/phpunit/bootstrap.php` — loads the Composer autoloader and the WordPress test suite, and forces the plugin to be active.
 - Test classes extend `WP_UnitTestCase` and use `set_up()` / `tear_down()`.
@@ -197,6 +203,7 @@ npm run test-php -- --filter Settings_Tests::test_sanitize_is_idempotent
 - `includes/Plugin_Main.php` — the composition root. Add new components here.
 - `includes/Settings.php` — the only class that knows how a field value is resolved and sanitized.
 - `includes/Credentials.php` — the only class that touches secrets.
+- `includes/Secrets_API.php` — the only class that calls the WordPress Secrets API functions.
 - `includes/Provider_Registry.php` — the provider contract and the Generic SMTP provider.
 
 ## Release Process

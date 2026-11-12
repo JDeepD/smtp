@@ -9,6 +9,7 @@ namespace WordPress\SMTP;
 
 use WordPress\SMTP\Admin\Admin_Page;
 use WordPress\SMTP\Admin\Alerts_Tab;
+use WordPress\SMTP\Admin\Credentials_Notice;
 use WordPress\SMTP\Admin\Failure_Notice;
 use WordPress\SMTP\Admin\Test_Email;
 use WordPress\SMTP\Alerts\Alert_Channel_Registry;
@@ -61,6 +62,8 @@ class Plugin_Main {
 		$settings    = new Settings( $registry, $credentials );
 		$repository  = new Log_Repository();
 
+		$credentials->add_hooks();
+
 		$migration = new Migration( $credentials );
 		$migration->add_hooks();
 
@@ -95,6 +98,9 @@ class Plugin_Main {
 
 			$failure_notice = new Failure_Notice( $repository );
 			$failure_notice->add_hooks();
+
+			$credentials_notice = new Credentials_Notice( $credentials );
+			$credentials_notice->add_hooks();
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
@@ -133,8 +139,11 @@ class Plugin_Main {
 	 * @since 1.2.0
 	 */
 	public static function activate() {
+		$credentials = new Credentials();
+
 		( new Log_Repository() )->maybe_upgrade();
-		( new Migration( new Credentials() ) )->maybe_migrate();
+		( new Migration( $credentials ) )->maybe_migrate();
+		$credentials->maybe_migrate();
 
 		if ( ! wp_next_scheduled( self::PURGE_HOOK ) ) {
 			wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', self::PURGE_HOOK );

@@ -9,6 +9,7 @@ use WordPress\SMTP\CLI\Settings_Command;
 use WordPress\SMTP\Credentials;
 use WordPress\SMTP\Provider_Registry;
 use WordPress\SMTP\Settings;
+use WordPress\SMTP\Test_Utils\Fake_Secrets_API;
 
 require_once TESTS_PLUGIN_DIR . '/tests/phpunit/utils/wp-cli-stub.php';
 
@@ -239,5 +240,21 @@ class Settings_Command_Tests extends WP_UnitTestCase {
 
 		$this->assertSame( 'two', $this->settings->get_provider_slug() );
 		$this->assertSame( 's3cret-value', $this->credentials->get( 'key_a' ) );
+	}
+
+	public function test_set_fails_when_the_secrets_api_can_not_store_the_password() {
+		$api              = new Fake_Secrets_API();
+		$this->settings   = new Settings( new Provider_Registry(), new Credentials( $api ) );
+		$api->fail_writes = true;
+
+		try {
+			$this->run_set( array( 'host=smtp.example.com', 'password=-' ), "s3cret-value\n" );
+			$this->fail( 'Expected the command to fail.' );
+		} catch ( RuntimeException $error ) {
+			$this->assertStringContainsString( 'could not be saved with the WordPress Secrets API', $error->getMessage() );
+		}
+
+		$this->assertSame( 'smtp.example.com', get_option( Settings::OPTION )['host'] );
+		$this->assertSame( array(), $api->secrets );
 	}
 }

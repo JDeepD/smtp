@@ -21,6 +21,20 @@ Constants defined in `wp-config.php` override the saved value and lock the field
 | `SMTP_PASSWORD` | Password |
 | `SMTP_FROM_EMAIL` | From email |
 
+## Secrets storage
+
+Passwords and other secrets (such as the Slack webhook URL) are stored with the [WordPress Secrets API](https://make.wordpress.org/core/2026/08/25/proposal-a-secrets-api-for-wordpress-7-2/) (WordPress 7.2) when it is available, and in the `smtp_credentials` option (not autoloaded) otherwise.
+
+- The API counts as available when `wp_is_secrets_api_available()` and `wp_secrets_provider_is_writable()` return `true`. Without a usable `WP_SECRETS_KEY`, the option is used.
+- Secret names are `smtp/<key>`, for example `smtp/password` and `smtp/alert_slack_webhook_url`. Keys that are not valid secret names stay in the option.
+- The `smtp_secret_keys` option lists the keys stored with the API, so each key is read from one place only.
+- Once the API is available, the values in the option are moved on the next admin page load (`admin_init`) and on activation. Each value is read back before it is removed from the option.
+- When a stored secret cannot be read (the API was removed, or `WP_SECRETS_KEY` was changed or lost), the plugin works as if the secret was never entered, and never falls back to plain text. An admin notice asks to check Site Health or to enter the secret again.
+- When the API fails to save a new value, the current one is kept and the settings screen, or `wp smtp settings set`, reports the error.
+- Constants keep overriding both storages.
+- `wp smtp status` shows the storage in use as `secret_storage` (`secrets` or `option`), and the password field on the Settings tab says where it is stored.
+- Uninstall deletes the secrets with `wp_delete_secret()`, along with the options.
+
 ## Adding a provider
 
 Providers are added with the `smtp_providers` filter. A provider configures the `PHPMailer` instance used by `wp_mail()`, so it works with any service that offers SMTP. The built-in Generic SMTP provider is registered through the same filter.
@@ -138,7 +152,7 @@ Every email sent with `wp_mail()` is logged in the `{prefix}smtp_logs` table wit
 The _Alerts_ tab sends a notification outside of email when `wp_mail()` fails, because a broken mailer cannot report itself. Slack (Incoming Webhook) is the first channel.
 
 - Pick the channel in _Send failure alerts via_ (`None` by default). Only the fields of the selected channel are shown, and alerts are sent once it is configured. The fields of the other channels are kept.
-- The Slack webhook URL is stored as a secret through `Credentials` and never printed back.
+- The Slack webhook URL is stored as a secret through `Credentials` (see [Secrets storage](#secrets-storage)) and never printed back.
 - To avoid flooding a channel, at most one alert is sent every 15 minutes per channel. Failures in between are counted and reported with the next alert.
 - When an alert cannot be delivered, the error is shown in the tab. It never triggers another alert.
 - The message contains the error, the recipients and the subject (the same metadata as the email log), and a link to the failed entries of the log.

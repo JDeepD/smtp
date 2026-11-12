@@ -30,6 +30,7 @@ class Uninstall_Tests extends WP_UnitTestCase {
 
 		$this->create_log_table();
 		update_option( Settings::OPTION, array( 'host' => 'smtp.example.com' ) );
+		update_option( Credentials::SECRET_KEYS_OPTION, array( 'password' ) );
 		( new Credentials() )->set( 'password', 'secret' );
 		( new Credentials() )->set( Alert_Settings::get_secret_key( 'slack', 'webhook_url' ), 'https://hooks.slack.com/services/secret' );
 		update_option( Alert_Settings::OPTION, array( 'channel' => 'slack' ) );
@@ -64,6 +65,7 @@ class Uninstall_Tests extends WP_UnitTestCase {
 
 		$this->assertFalse( get_option( Settings::OPTION ) );
 		$this->assertFalse( get_option( Credentials::OPTION ) );
+		$this->assertFalse( get_option( Credentials::SECRET_KEYS_OPTION ) );
 		$this->assertFalse( get_option( Log_Repository::DB_VERSION_OPTION ) );
 		$this->assertFalse( get_option( Alert_Settings::OPTION ) );
 		$this->assertFalse( get_option( Alert_Dispatcher::STATE_OPTION ) );
@@ -76,5 +78,20 @@ class Uninstall_Tests extends WP_UnitTestCase {
 		$this->assertNotEmpty(
 			preg_grep( '/^DROP (TEMPORARY )?TABLE IF EXISTS ' . preg_quote( $wpdb->prefix, '/' ) . 'smtp_logs$/', $queries )
 		);
+	}
+
+	public function test_uninstall_deletes_the_secrets() {
+		if ( ! function_exists( 'wp_is_secrets_api_available' ) || ! wp_is_secrets_api_available() ) {
+			$this->markTestSkipped( 'The Secrets API is not available.' );
+		}
+
+		$credentials = new Credentials();
+		$credentials->set( 'password', 'secret' );
+		$credentials->set( Alert_Settings::get_secret_key( 'slack', 'webhook_url' ), 'https://hooks.slack.com/services/secret' );
+
+		$this->run_uninstall();
+
+		$this->assertNull( wp_get_secret( 'smtp/password' ) );
+		$this->assertNull( wp_get_secret( 'smtp/alert_slack_webhook_url' ) );
 	}
 }

@@ -40,6 +40,14 @@ class Settings {
 	private $credentials;
 
 	/**
+	 * Keys of the secrets that could not be stored during this request.
+	 *
+	 * @since 1.2.0
+	 * @var string[]
+	 */
+	private $unsaved_secrets = array();
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 1.2.0
@@ -223,8 +231,8 @@ class Settings {
 
 				case 'password':
 					// An empty submission keeps the current secret.
-					if ( is_string( $raw ) && '' !== $raw ) {
-						$this->credentials->set( $key, $raw );
+					if ( is_string( $raw ) && '' !== $raw && ! $this->credentials->set( $key, $raw ) ) {
+						$this->report_unsaved_secret( $key, $field );
 					}
 					break;
 
@@ -247,6 +255,28 @@ class Settings {
 		}
 
 		return $clean;
+	}
+
+	/**
+	 * Returns the keys of the secrets that could not be stored during this request.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @return string[] Field keys.
+	 */
+	public function get_unsaved_secrets(): array {
+		return $this->unsaved_secrets;
+	}
+
+	/**
+	 * Returns where secrets are stored.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @return string `secrets` for the WordPress Secrets API, `option` otherwise.
+	 */
+	public function get_secret_storage(): string {
+		return $this->credentials->get_storage();
 	}
 
 	/**
@@ -327,6 +357,34 @@ class Settings {
 				'description' => __( 'Always use the From email and name above, even when another plugin sets its own.', 'smtp' ),
 			),
 		);
+	}
+
+	/**
+	 * Records a secret that could not be stored, and reports it on the settings screen.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param string $key   Field key.
+	 * @param array  $field Normalized field.
+	 */
+	private function report_unsaved_secret( string $key, array $field ) {
+		if ( in_array( $key, $this->unsaved_secrets, true ) ) {
+			return;
+		}
+
+		$this->unsaved_secrets[] = $key;
+
+		if ( function_exists( 'add_settings_error' ) ) {
+			add_settings_error(
+				self::OPTION,
+				'smtp_secret_not_saved_' . $key,
+				sprintf(
+					/* translators: %s: Field label, for example "Password" */
+					__( '%s could not be saved with the WordPress Secrets API. The current value was kept.', 'smtp' ),
+					$field['label']
+				)
+			);
+		}
 	}
 
 	/**

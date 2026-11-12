@@ -15,6 +15,7 @@ use WordPress\SMTP\Delivery_Tracker;
 use WordPress\SMTP\Log_Repository;
 use WordPress\SMTP\Provider_Registry;
 use WordPress\SMTP\Settings;
+use WordPress\SMTP\Test_Utils\Fake_Secrets_API;
 use WordPress\SMTP\Test_Utils\Traits\With_Log_Table;
 
 class Admin_Page_Tests extends WP_UnitTestCase {
@@ -219,6 +220,20 @@ class Admin_Page_Tests extends WP_UnitTestCase {
 
 		$this->assertStringNotContainsString( 'top-secret-password', $html );
 		$this->assertStringContainsString( 'A password is saved. Leave empty to keep it.', $html );
+	}
+
+	public function test_the_password_field_tells_where_the_password_is_stored() {
+		$api              = new Fake_Secrets_API();
+		$registry         = new Provider_Registry();
+		$settings         = new Settings( $registry, new Credentials( $api ) );
+		$this->admin_page = new Admin_Page( $settings, $registry, new Log_Repository(), WP_SMTP_MAIN_FILE, new Delivery_Tracker( $settings ) );
+		$this->admin_page->register_settings();
+
+		$this->assertStringContainsString( 'Stored encrypted with the WordPress Secrets API.', $this->render() );
+
+		$api->available = false;
+
+		$this->assertStringContainsString( 'Stored in the database, not encrypted.', $this->render() );
 	}
 
 	public function test_saved_values_are_escaped() {
